@@ -1,57 +1,64 @@
 #!/usr/bin/env python3
-"""Make the Judge Smile — entry program.
+"""Make the Judge Smile -- one-line entry writer.
 
-Writes exactly one line (at most 200 characters) about a small good
-thing that happened today to /output/entry.txt.
+Writes a single calibrated line (127 characters) about a small good
+thing that happened today to entry.txt in the output directory.
 
-The line was chosen by calibration, not by a first draft: 24 candidate
-lines were written, hand-scored on the judge's published rubric
-(on-subject, warmth, surprise, concreteness, fresh wording), then scored
-again with a small lexical proxy of the same rubric, then refined over
-two more rounds (10 variants). The winner below scored rubric 23/25 and
-the highest proxy score of the whole pool (23.0), far above the generic
-control line (rubric 12/25, proxy -3.5):
+Standard library only, no network, deterministic: the same bytes on
+every run.
 
-    The cat next door hates the whole street, but today she chose my lap,
-    purred once, and fell asleep like she'd signed the lease.
-
-Why it wins on the judge's criteria, in order:
-  1. On-subject: one small good thing that happened today, first person.
-  2. Warmth: being chosen by an animal that likes nobody is a glow that
-     lands as genuinely felt, not reported.
-  3. Surprise: the turn is the whole joke — a cat that hates the whole
-     street picks *my* lap, then the punchline reframes the nap as a
-     signed lease.
-  4. Concreteness: one real detail, the single purr, plus "today".
-  5. Fresh wording: no greeting-card phrasing anywhere; "signed the
-     lease" is the line's own rhythm.
-
-Standard library only. Deterministic: the same bytes every run.
+Revision history:
+  v1 -- fresh write: entry constant, output-dir resolution, gate
+        self-check, deterministic write.
+  v2 -- added a control-character gate check and a read-back
+        verification that the written bytes match the entry exactly.
 """
 
 import os
 import sys
 
-ENTRY = (
-    "The cat next door hates the whole street, but today she chose "
-    "my lap, purred once, and fell asleep like she'd signed the lease."
-)
-
-MAX_CHARS = 200
+# The entry: the calibrated pick -- surprise turn (a street-hating cat
+# picks *my* lap), one concrete detail (a single purr, "today"), and a
+# fresh punchline ("signed the lease").
+ENTRY = "The cat next door hates the whole street, but today she chose my lap, purred once, and fell asleep like she'd signed the lease."
 
 
-def main() -> int:
-    text = ENTRY
-    if not (1 <= len(text) <= MAX_CHARS):
-        raise SystemExit(f"entry is {len(text)} chars, must be 1-200")
-    if text != text.strip() or "\n" in text:
-        raise SystemExit("entry must be a single non-blank line")
-    out_dir = os.environ.get("OUTPUT_DIR", "/output")
+def output_dir():
+    """Resolve the output directory.
+
+    Prefer $MAKEFUN_OUTPUT_DIR, then $OUTPUT_DIR, else /output.
+    """
+    for name in ("MAKEFUN_OUTPUT_DIR", "OUTPUT_DIR"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return "/output"
+
+
+def self_check(text):
+    """Gate: 1-200 characters, one line, UTF-8, not only whitespace."""
+    if not text or text != text.strip():
+        raise SystemExit("entry must be non-empty with no leading/trailing whitespace")
+    if len(text) < 1 or len(text) > 200:
+        raise SystemExit("entry must be 1-200 characters")
+    if "\n" in text or "\r" in text:
+        raise SystemExit("entry must be a single line")
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text):
+        raise SystemExit("entry must not contain control characters")
+    text.encode("utf-8")
+
+
+def main():
+    self_check(ENTRY)
+    out_dir = output_dir()
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "entry.txt")
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text + "\n")
-    print(f"wrote {len(text)} chars to {path}")
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(ENTRY + "\n")
+    with open(path, "rb") as handle:
+        written = handle.read()
+    if written != (ENTRY + "\n").encode("utf-8"):
+        raise SystemExit("read-back verification failed: written bytes differ")
     return 0
 
 
